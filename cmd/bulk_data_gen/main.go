@@ -58,6 +58,9 @@ var (
 	debug int
 
 	cpuProfile string
+
+	mode    string
+	dataDir string
 )
 
 // Parse args:
@@ -81,10 +84,17 @@ func init() {
 
 	flag.StringVar(&cpuProfile, "cpu-profile", "", "Write CPU profile to `file`")
 
+	flag.StringVar(&mode, "mode", "random", "Data type for node exporter series")
+	flag.StringVar(&dataDir, "data", "", "Dir storing the node exporter data")
+
 	flag.Parse()
 
 	if !(interleavedGenerationGroupID < interleavedGenerationGroups) {
 		log.Fatal("incorrect interleaved groups configuration")
+	}
+
+	if mode == "timeseries" && dataDir == "" {
+		log.Fatal("Please set the data dir")
 	}
 
 	validFormat := false
@@ -180,6 +190,18 @@ func main() {
 			SmartHomeOffset: scaleVarOffset,
 		}
 		sim = cfg.ToSimulator()
+	case common.UseCaseChoices[3]:
+		cfg := &devops.PrometheusSimulator{
+			Start: timestampStart,
+			End:   timestampEnd,
+
+			HostCount:  scaleVar,
+			HostOffset: scaleVarOffset,
+
+			mode:    mode,
+			dataDir: dataDir,
+		}
+		sim = cfg.ToSimulator()
 	default:
 		panic("unreachable")
 	}
@@ -243,5 +265,13 @@ func main() {
 	log.Printf("Written %d points, %d values, took %0f seconds\n", n, sim.SeenValues(), dur.Seconds())
 	if err != nil {
 		log.Fatal(err.Error())
+	}
+
+	// Close the scanners.
+	if useCase == common.UseCaseChoices[3] && mode == "timeseries" {
+		ps := sim.(*PrometheusSimulator)
+		for _, file := range ps.files {
+			file.Close()
+		}
 	}
 }
