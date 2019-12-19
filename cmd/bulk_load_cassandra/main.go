@@ -8,15 +8,15 @@ import (
 	"bufio"
 	"flag"
 	"fmt"
-	"github.com/influxdata/influxdb-comparisons/bulk_load"
+	"github.com/naivewong/influxdb-comparisons/bulk_load"
 	"io"
 	"log"
 	"sync"
 	"time"
 
 	"github.com/gocql/gocql"
-	"github.com/influxdata/influxdb-comparisons/bulk_data_gen/common"
-	"github.com/influxdata/influxdb-comparisons/util/report"
+	"github.com/naivewong/influxdb-comparisons/bulk_data_gen/common"
+	"github.com/naivewong/influxdb-comparisons/util/report"
 	"strconv"
 	"strings"
 )

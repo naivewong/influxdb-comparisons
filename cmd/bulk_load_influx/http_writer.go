@@ -38,6 +38,10 @@ type HTTPWriterConfig struct {
 
 	// Debug label for more informative errors.
 	DebugInfo string
+
+	Org    string
+	Token  string
+	Bucket string
 }
 
 // HTTPWriter is a Writer that writes to an InfluxDB HTTP server.
@@ -49,15 +53,30 @@ type HTTPWriter struct {
 }
 
 // NewHTTPWriter returns a new HTTPWriter from the supplied HTTPWriterConfig.
-func NewHTTPWriter(c HTTPWriterConfig, consistency string) *HTTPWriter {
-	return &HTTPWriter{
-		client: fasthttp.Client{
-			Name: "bulk_load_influx",
-			MaxIdleConnDuration: DefaultIdleConnectionTimeout,
-		},
+func NewHTTPWriter(c HTTPWriterConfig, consistency, version string) *HTTPWriter {
+	switch version {
+	case "v1":
+		return &HTTPWriter{
+			client: fasthttp.Client{
+				Name: "bulk_load_influx",
+				MaxIdleConnDuration: DefaultIdleConnectionTimeout,
+			},
 
-		c:   c,
-		url: []byte(c.Host + "/write?consistency=" + consistency + "&db=" + url.QueryEscape(c.Database)),
+			c:   c,
+			url: []byte(c.Host + "/write?consistency=" + consistency + "&db=" + url.QueryEscape(c.Database)),
+		}
+	case "v2":
+		return &HTTPWriter{
+			client: fasthttp.Client{
+				Name: "bulk_load_influx",
+				MaxIdleConnDuration: DefaultIdleConnectionTimeout,
+			},
+
+			c:   c,
+			url: []byte(fmt.Sprintf("%s/write?org=%s&bucket=%s&precision=ns", c.Host, c.Org, c.Bucket)),
+		}
+	default:
+		return nil	
 	}
 }
 
@@ -77,6 +96,37 @@ func (w *HTTPWriter) WriteLineProtocol(body []byte, isGzip bool) (int64, error) 
 	if isGzip {
 		req.Header.Add("Content-Encoding", "gzip")
 	}
+	req.SetBody(body)
+
+	resp := fasthttp.AcquireResponse()
+	start := time.Now()
+	err := w.client.Do(req, resp)
+	lat := time.Since(start).Nanoseconds()
+	if err == nil {
+		sc := resp.StatusCode()
+		if sc == 500 && backpressurePred(resp.Body()) {
+			err = BackoffError
+			log.Printf("backoff suggested, reason: %s", resp.Body())
+		} else if sc != fasthttp.StatusNoContent {
+			err = fmt.Errorf("[DebugInfo: %s] Invalid write response (status %d): %s", w.c.DebugInfo, sc, resp.Body())
+		}
+	}
+
+	fasthttp.ReleaseResponse(resp)
+	fasthttp.ReleaseRequest(req)
+
+	return lat, err
+}
+
+func (w *HTTPWriter) WriteLineProtocolV2(body []byte, isGzip bool) (int64, error) {
+	req := fasthttp.AcquireRequest()
+	req.Header.SetContentTypeBytes([]byte("application/vnd.flux"))
+	req.Header.SetMethodBytes(post)
+	req.Header.SetRequestURIBytes(w.url)
+	if isGzip {
+		req.Header.Add("Content-Encoding", "gzip")
+	}
+	req.Header.Add("Authorization", "Token " + w.c.Token)
 	req.SetBody(body)
 
 	resp := fasthttp.AcquireResponse()

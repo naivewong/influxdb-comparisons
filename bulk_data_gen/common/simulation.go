@@ -4,7 +4,7 @@ import "time"
 
 const (
 	DefaultDateTimeStart = "2018-01-01T00:00:00Z"
-	DefaultDateTimeEnd   = "2018-01-02T00:00:00Z"
+	DefaultDateTimeEnd   = "2018-01-01T12:00:00Z"
 	UseCaseDevOps        = "devops"
 	UseCaseIot           = "iot"
 	UseCaseDashboard     = "dashboard"

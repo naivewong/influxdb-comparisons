@@ -15,8 +15,8 @@ import (
 	"sync"
 	"time"
 
-	"github.com/influxdata/influxdb-comparisons/bulk_data_gen/common"
-	"github.com/influxdata/influxdb-comparisons/util/report"
+	"github.com/naivewong/influxdb-comparisons/bulk_data_gen/common"
+	"github.com/naivewong/influxdb-comparisons/util/report"
 	"github.com/pkg/profile"
 	"github.com/valyala/fasthttp"
 	"strconv"

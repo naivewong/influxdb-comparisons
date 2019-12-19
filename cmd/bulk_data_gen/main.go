@@ -19,10 +19,11 @@ import (
 	"bufio"
 	"flag"
 	"fmt"
-	"github.com/influxdata/influxdb-comparisons/bulk_data_gen/common"
-	"github.com/influxdata/influxdb-comparisons/bulk_data_gen/dashboard"
-	"github.com/influxdata/influxdb-comparisons/bulk_data_gen/devops"
-	"github.com/influxdata/influxdb-comparisons/bulk_data_gen/iot"
+	"github.com/naivewong/influxdb-comparisons/bulk_data_gen/common"
+	"github.com/naivewong/influxdb-comparisons/bulk_data_gen/dashboard"
+	"github.com/naivewong/influxdb-comparisons/bulk_data_gen/devops"
+	"github.com/naivewong/influxdb-comparisons/bulk_data_gen/iot"
+	"github.com/naivewong/influxdb-comparisons/bulk_data_gen/prometheus"
 	"log"
 	"os"
 	"runtime/pprof"
@@ -59,8 +60,9 @@ var (
 
 	cpuProfile string
 
-	mode    string
-	dataDir string
+	mode      string
+	dataDir   string
+	seriesDir string
 )
 
 // Parse args:
@@ -86,11 +88,16 @@ func init() {
 
 	flag.StringVar(&mode, "mode", "random", "Data type for node exporter series")
 	flag.StringVar(&dataDir, "data", "", "Dir storing the node exporter data")
+	flag.StringVar(&seriesDir, "labels", "", "Dir storing the node exporter labels")
 
 	flag.Parse()
 
 	if !(interleavedGenerationGroupID < interleavedGenerationGroups) {
 		log.Fatal("incorrect interleaved groups configuration")
+	}
+
+	if useCase == common.UseCaseChoices[3] && seriesDir == "" {
+		log.Fatal("Please set the labels dir")
 	}
 
 	if mode == "timeseries" && dataDir == "" {
@@ -131,6 +138,7 @@ func init() {
 		log.Fatal("Invalid sampling interval")
 	}
 	devops.EpochDuration = samplingInterval
+	prometheus.EpochDuration = samplingInterval
 	log.Printf("Using sampling interval %v\n", devops.EpochDuration)
 }
 
@@ -191,15 +199,16 @@ func main() {
 		}
 		sim = cfg.ToSimulator()
 	case common.UseCaseChoices[3]:
-		cfg := &devops.PrometheusSimulator{
+		cfg := &prometheus.PrometheusSimulatorConfig{
 			Start: timestampStart,
 			End:   timestampEnd,
 
 			HostCount:  scaleVar,
 			HostOffset: scaleVarOffset,
 
-			mode:    mode,
-			dataDir: dataDir,
+			Mode:      mode,
+			DataDir:   dataDir,
+			SeriesDir: seriesDir,
 		}
 		sim = cfg.ToSimulator()
 	default:
@@ -269,9 +278,7 @@ func main() {
 
 	// Close the scanners.
 	if useCase == common.UseCaseChoices[3] && mode == "timeseries" {
-		ps := sim.(*PrometheusSimulator)
-		for _, file := range ps.files {
-			file.Close()
-		}
+		ps := sim.(*prometheus.PrometheusSimulator)
+		ps.Close()
 	}
 }

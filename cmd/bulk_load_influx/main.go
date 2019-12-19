@@ -11,19 +11,18 @@ import (
 	"encoding/json"
 	"flag"
 	"fmt"
-	"github.com/influxdata/influxdb-comparisons/bulk_load"
+	"github.com/naivewong/influxdb-comparisons/bulk_load"
 	"io"
 	"io/ioutil"
 	"log"
 	"net/http"
-	"net/url"
 	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
 
-	"github.com/influxdata/influxdb-comparisons/bulk_data_gen/common"
-	"github.com/influxdata/influxdb-comparisons/util/report"
+	"github.com/naivewong/influxdb-comparisons/bulk_data_gen/common"
+	"github.com/naivewong/influxdb-comparisons/util/report"
 	"github.com/valyala/fasthttp"
 	"strconv"
 )
@@ -57,6 +56,10 @@ type InfluxBulkLoad struct {
 	valuesRead            int64
 	itemsRead             int64
 	bytesRead             int64
+
+	org   string
+	orgID string
+	token string
 }
 
 var consistencyChoices = map[string]struct{}{
@@ -99,14 +102,18 @@ type workerConfig struct {
 }
 
 func (l *InfluxBulkLoad) Init() {
-	flag.StringVar(&l.csvDaemonUrls, "urls", "http://localhost:8086", "InfluxDB URLs, comma-separated. Will be used in a round-robin fashion.")
+	flag.StringVar(&l.csvDaemonUrls, "urls", "http://localhost:9999/api/v2", "InfluxDB URLs, comma-separated. Will be used in a round-robin fashion.")
 	flag.IntVar(&l.replicationFactor, "replication-factor", 1, "Cluster replication factor (only applies to clustered databases).")
 	flag.StringVar(&l.consistency, "consistency", "one", "Write consistency. Must be one of: any, one, quorum, all.")
 	flag.DurationVar(&l.backoff, "backoff", time.Second, "Time to sleep between requests when server indicates backpressure is needed.")
 	flag.DurationVar(&l.backoffTimeOut, "backoff-timeout", time.Minute*30, "Maximum time to spent when dealing with backoff messages in one shot")
-	flag.BoolVar(&l.useGzip, "gzip", true, "Whether to gzip encode requests (default true).")
+	flag.BoolVar(&l.useGzip, "gzip", false, "Whether to gzip encode requests (default true).")
 	flag.IntVar(&l.clientIndex, "client-index", 0, "Index of a client host running this tool. Used to distribute load")
 	flag.IntVar(&l.ingestRateLimit, "ingest-rate-limit", -1, "Ingest rate limit in values/s (-1 = no limit).")
+
+	flag.StringVar(&l.org, "org", "cuhk", "organization")
+	flag.StringVar(&l.orgID, "orgid", "04f20749e6b92000", "organization id")
+	flag.StringVar(&l.token, "token", "YWVdTSHxIJ0XfgyprNmEe7RhhKP0YI1KQa4y4Zz5iZWkg4gkKJigGpafeQXoS_9Z52D9H-T0rruPp8O9Es2TtA==", "Authorization token")
 }
 
 func (l *InfluxBulkLoad) Validate() {
@@ -146,7 +153,7 @@ func (l *InfluxBulkLoad) Validate() {
 
 func (l *InfluxBulkLoad) CreateDb() {
 	// this also test db connection
-	existingDatabases, err := listDatabases(l.daemonUrls[0])
+	existingDatabases, ids, err := listDatabases(l.daemonUrls[0], l.org, l.token)
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -159,14 +166,17 @@ func (l *InfluxBulkLoad) CreateDb() {
 		}
 	}
 
-	if len(existingDatabases) == 0 {
-		err = createDb(l.daemonUrls[0], bulk_load.Runner.DbName, l.replicationFactor, l.consistency)
-		if err != nil {
-			log.Fatal(err)
+	for i, name := range existingDatabases {
+		if name == bulk_load.Runner.DbName {
+			deleteDB(l.daemonUrls[0], ids[i], l.token)
 		}
-		time.Sleep(1000 * time.Millisecond)
 	}
 
+	err = createDb(l.daemonUrls[0], bulk_load.Runner.DbName, l.org, l.orgID, l.token, l.replicationFactor, l.consistency)
+	if err != nil {
+		log.Fatal(err)
+	}
+	time.Sleep(1000 * time.Millisecond)
 }
 
 func (l *InfluxBulkLoad) GetBatchProcessor() bulk_load.BatchProcessor {
@@ -225,7 +235,11 @@ func (l *InfluxBulkLoad) PrepareProcess(i int) {
 		Database:       bulk_load.Runner.DbName,
 		BackingOffChan: l.configs[i].backingOffChan,
 		BackingOffDone: l.configs[i].backingOffDone,
-	}, l.consistency)
+
+		Org:            l.org,
+		Token:          l.token,
+		Bucket:         bulk_load.Runner.DbName,
+	}, l.consistency, "v2")
 }
 
 func (l *InfluxBulkLoad) RunProcess(i int, waitGroup *sync.WaitGroup, telemetryPoints chan *report.Point, reportTags [][2]string) error {
@@ -403,13 +417,13 @@ func (l *InfluxBulkLoad) processBatches(w *HTTPWriter, backoffSrc chan bool, tel
 					compressedBatch := l.bufPool.Get().(*bytes.Buffer)
 					fasthttp.WriteGzip(compressedBatch, batch.Buffer.Bytes())
 					//bodySize = len(compressedBatch.Bytes())
-					_, err = w.WriteLineProtocol(compressedBatch.Bytes(), true)
+					_, err = w.WriteLineProtocolV2(compressedBatch.Bytes(), true)
 					// Return the compressed batch buffer to the pool.
 					compressedBatch.Reset()
 					l.bufPool.Put(compressedBatch)
 				} else {
 					//bodySize = len(batch.Bytes())
-					_, err = w.WriteLineProtocol(batch.Buffer.Bytes(), false)
+					_, err = w.WriteLineProtocolV2(batch.Buffer.Bytes(), false)
 				}
 
 				if err == BackoffError {
@@ -517,23 +531,13 @@ func processBackoffMessages(workerId int, src chan bool, dst chan struct{}) floa
 	return totalBackoffSecs
 }
 
-func createDb(daemonUrl, dbname string, replicationFactor int, consistency string) error {
-	u, err := url.Parse(daemonUrl)
+func deleteDB(daemonUrl, bid, token string) error {
+	u := fmt.Sprintf("%s/buckets/%s", daemonUrl, bid)
+	req, err := http.NewRequest("DELETE", u, nil)
 	if err != nil {
 		return err
 	}
-
-	// serialize params the right way:
-	u.Path = "query"
-	v := u.Query()
-	v.Set("consistency", consistency)
-	v.Set("q", fmt.Sprintf("CREATE DATABASE %s WITH REPLICATION %d", dbname, replicationFactor))
-	u.RawQuery = v.Encode()
-
-	req, err := http.NewRequest("GET", u.String(), nil)
-	if err != nil {
-		return err
-	}
+	req.Header.Add("Authorization", "Token " + token)
 
 	client := &http.Client{}
 	resp, err := client.Do(req)
@@ -543,56 +547,83 @@ func createDb(daemonUrl, dbname string, replicationFactor int, consistency strin
 	defer resp.Body.Close()
 	// does the body need to be read into the void?
 
-	if resp.StatusCode != http.StatusOK {
+	if resp.StatusCode != http.StatusOK && resp.StatusCode != http.StatusNonAuthoritativeInfo {
 		return fmt.Errorf("createDb returned status code: %v", resp.StatusCode)
 	}
+	fmt.Println("Delete bucket", bid)
+	return nil
+}
+
+func createDb(daemonUrl, dbname, org, orgid, token string, replicationFactor int, consistency string) error {
+	u := fmt.Sprintf("%s/buckets?org=%s", daemonUrl, org)
+	req, err := http.NewRequest("POST", u, bytes.NewBuffer([]byte("{\"orgID\":\""+orgid+"\",\"name\":\""+dbname+"\"}")))
+	if err != nil {
+		return err
+	}
+	req.Header.Add("Authorization", "Token " + token)
+
+	client := &http.Client{}
+	resp, err := client.Do(req)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+	// does the body need to be read into the void?
+
+	if resp.StatusCode != http.StatusCreated && resp.StatusCode != http.StatusOK {
+		return fmt.Errorf("createDb returned status code: %v", resp.StatusCode)
+	}
+	fmt.Println("Create DB", dbname)
 	return nil
 }
 
 // listDatabases lists the existing databases in InfluxDB.
-func listDatabases(daemonUrl string) ([]string, error) {
-	u := fmt.Sprintf("%s/query?q=show%%20databases", daemonUrl)
-	resp, err := http.Get(u)
+func listDatabases(daemonUrl, org, token string) ([]string, []string, error) {
+	u := fmt.Sprintf("%s/buckets?org=%s", daemonUrl, org)
+	req, err := http.NewRequest("GET", u, nil)
 	if err != nil {
-		return nil, fmt.Errorf("listDatabases error: %s", err.Error())
+		return nil, nil, err
+	}
+	req.Header.Add("Authorization", "Token " + token)
+	client := &http.Client{}
+	resp, err := client.Do(req)
+	if err != nil {
+		return nil, nil, fmt.Errorf("listDatabases error: %s", err.Error())
 	}
 
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("listDatabases returned status code: %v", resp.StatusCode)
+		return nil, nil, fmt.Errorf("listDatabases returned status code: %v", resp.StatusCode)
 	}
 
 	body, err := ioutil.ReadAll(resp.Body)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 
-	// Do ad-hoc parsing to find existing database names:
-	// {"results":[{"series":[{"name":"databases","columns":["name"],"values":[["_internal"],["benchmark_db"]]}]}]}%
 	type listingType struct {
-		Results []struct {
-			Series []struct {
-				Values [][]string
-			}
+		Buckets []struct {
+			Id   string
+			Name string
 		}
 	}
 	var listing listingType
 	err = json.Unmarshal(body, &listing)
 	if err != nil {
-		return nil, err
+		fmt.Println(err, string(body))
+		return nil, nil, err
 	}
 
-	var ret []string
-	for _, nestedName := range listing.Results[0].Series[0].Values {
-		name := nestedName[0]
-		// the _internal database is skipped:
-		if name == "_internal" {
-			continue
-		}
-		ret = append(ret, name)
+	var (
+		retNames []string
+		retIds   []string
+	)
+	for _, b := range listing.Buckets {
+		retNames = append(retNames, b.Name)
+		retIds = append(retIds, b.Id)
 	}
-	return ret, nil
+	return retNames, retIds, nil
 }
 
 // countFields return number of fields in protocol line

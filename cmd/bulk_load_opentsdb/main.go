@@ -9,14 +9,14 @@ import (
 	"bytes"
 	"flag"
 	"fmt"
-	"github.com/influxdata/influxdb-comparisons/bulk_load"
+	"github.com/naivewong/influxdb-comparisons/bulk_load"
 	"io"
 	"log"
 	"strings"
 	"sync"
 	"time"
 
-	"github.com/influxdata/influxdb-comparisons/util/report"
+	"github.com/naivewong/influxdb-comparisons/util/report"
 	"github.com/klauspost/compress/gzip"
 )
 

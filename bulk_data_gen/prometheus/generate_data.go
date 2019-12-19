@@ -1,17 +1,23 @@
 package prometheus
 
 import (
-	. "github.com/influxdata/influxdb-comparisons/bulk_data_gen/common"
+	. "github.com/naivewong/influxdb-comparisons/bulk_data_gen/common"
 	"bufio"
+	"encoding/json"
 	"fmt"
 	"math/rand"
 	"os"
 	"path/filepath"
 	"strconv"
+	"strings"
 	"time"
 )
 
 const MaxNumDataFiles = 170
+var (
+	EpochDuration = 10 * time.Second
+	NHostSims = 505
+)
 
 type GeneralMeasurement struct {
 	timestamp time.Time
@@ -33,16 +39,6 @@ func (m *GeneralMeasurement) AddTags(name, value string) {
 	m.tagValues = append(m.tagValues, []byte(value))
 }
 
-func (m *GeneralMeasurement) AddField(field string) {
-	m.fields = append(m.fields, []byte(field))
-}
-
-func (m *GeneralMeasurement) AddFields(f ...string) {
-	for _, s := range f {
-		m.fields = append(m.fields, []byte(s))
-	}
-}
-
 func (m *GeneralMeasurement) Tick(d time.Duration) {
 	m.timestamp = m.timestamp.Add(d)
 }
@@ -55,7 +51,7 @@ func (m *GeneralMeasurement) ToPoint(p *Point, value float64) bool {
 		p.AppendTag(m.tagNames[i], m.tagValues[i])
 	}
 
-	p.AppendField("value", value)
+	p.AppendField([]byte("value"), value)
 	return true
 }
 
@@ -74,7 +70,7 @@ type PrometheusSimulator struct {
 
 	mode string // random, timeseries.
 
-	measurements []GeneralMeasurement
+	measurements []*GeneralMeasurement
 	hostCount    int64
 
 	scanners []*bufio.Scanner
@@ -99,28 +95,36 @@ func (g *PrometheusSimulator) Finished() bool {
 	return g.madePoints >= g.maxPoints
 }
 
+func (g *PrometheusSimulator) Close() {
+	for _, file := range g.files {
+		file.Close()
+	}
+}
+
 func (d *PrometheusSimulator) Next(p *Point) {
 	// switch to the next host if needed
-	if d.simulatedMeasurementIndex == len(pg.measurements) {
+	if d.simulatedMeasurementIndex == len(d.measurements) {
 		d.simulatedMeasurementIndex = 0
 		d.hostIndex++
-		pg.scanners[d.hostIndex].Scan()
-		s := scanners[d.hostIndex].Text()
-		data := strings.Split(s, ",")
-		for i := range data {
-			v, _ := strconv.ParseFloat(data[i], 64)
-			pg.tmpData = append(pg.tmpData, v)
+		if d.mode == "timeseries" {
+			d.scanners[d.hostIndex].Scan()
+			s := d.scanners[d.hostIndex].Text()
+			data := strings.Split(s, ",")
+			for i := range data {
+				v, _ := strconv.ParseFloat(data[i], 64)
+				d.tmpData[i] = v
+			}
 		}
 	}
 
-	if d.hostIndex == d.hostCount {
+	if d.hostIndex == int(d.hostCount) {
 		d.hostIndex = 0
-		for _, m := d.measurements {
+		for _, m := range d.measurements {
 			m.Tick(EpochDuration)
 		}
 	}
 
-	p.AppendTag("instance", fmt.Sprintf("pc9%05d:9100", d.hostIndex))
+	p.AppendTag([]byte("instance"), []byte(fmt.Sprintf("pc9%05d:9100", d.hostIndex)))
 
 	switch d.mode {
 	case "random":
@@ -143,13 +147,14 @@ type PrometheusSimulatorConfig struct {
 	HostCount  int64
 	HostOffset int64
 
-	dataDir string
-	mode    string
+	DataDir   string
+	SeriesDir string
+	Mode      string
 }
 
 func (d *PrometheusSimulatorConfig) ToSimulator() *PrometheusSimulator {
 	epochs := d.End.Sub(d.Start).Nanoseconds() / EpochDuration.Nanoseconds()
-	maxPoints := epochs * (d.HostCount * NHostSims)
+	maxPoints := epochs * (d.HostCount * int64(NHostSims))
 	pg := &PrometheusSimulator{
 		madePoints: 0,
 		madeValues: 0,
@@ -164,34 +169,34 @@ func (d *PrometheusSimulatorConfig) ToSimulator() *PrometheusSimulator {
 		timestampEnd:   d.End,
 
 		hostCount: d.HostCount,
-		mode:      d.mode,
+		mode:      d.Mode,
 	}
 
-	if mode == "timeseries" {
+	if d.Mode == "timeseries" {
 		num := d.HostCount
-		if num < MaxNumDataFiles {
+		if num > MaxNumDataFiles {
 			num = MaxNumDataFiles
 		}
-		for i := 0; i < num; i++ {
-			file, err := os.Open(filepath.Join(pg.dataDir, "data" + strconv.Itoa(i)))
+		for i := 0; i < int(num); i++ {
+			file, err := os.Open(filepath.Join(d.DataDir, "data" + strconv.Itoa(i)))
 			if err != nil {
 				fmt.Println("Error open data file")
-				return nil
+				os.Exit(1)
 			}
 			pg.files = append(pg.files, file)
 			pg.scanners = append(pg.scanners, bufio.NewScanner(file))
 		}
 		for i := num; i < d.HostCount; i++ {
-			file, err := os.Open(filepath.Join(pg.dataDir, "data" + strconv.Itoa(i - num)))
+			file, err := os.Open(filepath.Join(d.DataDir, "data" + strconv.Itoa(int(i - num))))
 			if err != nil {
 				fmt.Println("Error open data file")
-				return nil
+				os.Exit(1)
 			}
 			pg.files = append(pg.files, file)
 			pg.scanners = append(pg.scanners, bufio.NewScanner(file))
 		}
 		pg.scanners[0].Scan()
-		s := scanners[0].Text()
+		s := pg.scanners[0].Text()
 		data := strings.Split(s, ",")
 		for i := range data {
 			v, _ := strconv.ParseFloat(data[i], 64)
@@ -201,18 +206,22 @@ func (d *PrometheusSimulatorConfig) ToSimulator() *PrometheusSimulator {
 
 	var temp *GeneralMeasurement
 
-	file, err := os.Open("./node_exporter.json")
-	testutil.Ok(t, err)
+	file, err := os.Open(filepath.Join(d.SeriesDir, "node_exporter.json"))
+	if err != nil {
+		fmt.Println("Error open node_exporter.json")
+		os.Exit(1)
+	}
 
 	scanner := bufio.NewScanner(file)
-	for scanner.Scan() {
+	i := 0
+	for scanner.Scan() && i < NHostSims {
 		m := make(map[string]string)
 		err = json.Unmarshal([]byte(scanner.Text()), &m)
 		if err != nil {
 			fmt.Println("Error parsing Json")
-			return nil
+			os.Exit(1)
 		}
-		temp = NewGeneralMeasurement(m["__name__"], d.Start)
+		temp = NewGeneralMeasurement([]byte(m["__name__"]), d.Start)
 		for k, v := range m {
 			if k == "__name__" || k == "instance" {
 				continue
@@ -220,6 +229,7 @@ func (d *PrometheusSimulatorConfig) ToSimulator() *PrometheusSimulator {
 			temp.AddTags(k, v)
 		}
 		pg.measurements = append(pg.measurements, temp)
+		i++
 	}
 	file.Close()
 

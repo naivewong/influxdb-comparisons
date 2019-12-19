@@ -1,0 +1,26 @@
+# random interval 5s
+./main --seed=123 --use-case="prometheus" --labels="../../bulk_data_gen/prometheus" --timestamp-start=2018-01-01T00:00:00Z --timestamp-end=2018-01-01T12:00:00Z --sampling-interval=5s --scale-var=10 | gzip > random5s.gz
+
+# random interval 10s
+./main --seed=123 --use-case="prometheus" --labels="../../bulk_data_gen/prometheus" --timestamp-start=2018-01-01T00:00:00Z --timestamp-end=2018-01-01T12:00:00Z --sampling-interval=10s --scale-var=10 | gzip > random10s.gz
+
+# random interval 15s
+./main --seed=123 --use-case="prometheus" --labels="../../bulk_data_gen/prometheus" --timestamp-start=2018-01-01T00:00:00Z --timestamp-end=2018-01-01T12:00:00Z --sampling-interval=15s --scale-var=10 | gzip > random15s.gz
+
+# random interval 30s
+./main --seed=123 --use-case="prometheus" --labels="../../bulk_data_gen/prometheus" --timestamp-start=2018-01-01T00:00:00Z --timestamp-end=2018-01-01T12:00:00Z --sampling-interval=30s --scale-var=10 | gzip > random30s.gz
+
+# timeseries interval 5s
+./main --seed=123 --use-case="prometheus" --labels="../../bulk_data_gen/prometheus" --timestamp-start=2018-01-01T00:00:00Z --timestamp-end=2018-01-01T12:00:00Z --sampling-interval=5s --scale-var=10 --data=../../../tsdb-group/testdata/bigdata/node_exporter --mode=timeseries | gzip > timeseries5s.gz
+
+# timeseries interval 10s
+./main --seed=123 --use-case="prometheus" --labels="../../bulk_data_gen/prometheus" --timestamp-start=2018-01-01T00:00:00Z --timestamp-end=2018-01-01T12:00:00Z --sampling-interval=10s --scale-var=10 --data=../../../tsdb-group/testdata/bigdata/node_exporter --mode=timeseries | gzip > timeseries10s.gz
+
+# timeseries interval 15s
+./main --seed=123 --use-case="prometheus" --labels="../../bulk_data_gen/prometheus" --timestamp-start=2018-01-01T00:00:00Z --timestamp-end=2018-01-01T12:00:00Z --sampling-interval=15s --scale-var=10 --data=../../../tsdb-group/testdata/bigdata/node_exporter --mode=timeseries | gzip > timeseries15s.gz
+
+# timeseries interval 30s
+./main --seed=123 --use-case="prometheus" --labels="../../bulk_data_gen/prometheus" --timestamp-start=2018-01-01T00:00:00Z --timestamp-end=2018-01-01T12:00:00Z --sampling-interval=30s --scale-var=10 --data=../../../tsdb-group/testdata/bigdata/node_exporter --mode=timeseries | gzip > timeseries30s.gz
+
+# load
+cat random5s.gz | gunzip | ./main --batch-size=5000 --workers=8

@@ -7,16 +7,16 @@ import (
 	"encoding/gob"
 	"flag"
 	"fmt"
-	"github.com/influxdata/influxdb-comparisons/bulk_data_gen/common"
-	bulkQueryGen "github.com/influxdata/influxdb-comparisons/bulk_query_gen"
-	"github.com/influxdata/influxdb-comparisons/bulk_query_gen/cassandra"
-	"github.com/influxdata/influxdb-comparisons/bulk_query_gen/elasticsearch"
-	"github.com/influxdata/influxdb-comparisons/bulk_query_gen/graphite"
-	"github.com/influxdata/influxdb-comparisons/bulk_query_gen/influxdb"
-	"github.com/influxdata/influxdb-comparisons/bulk_query_gen/mongodb"
-	"github.com/influxdata/influxdb-comparisons/bulk_query_gen/opentsdb"
-	"github.com/influxdata/influxdb-comparisons/bulk_query_gen/splunk"
-	"github.com/influxdata/influxdb-comparisons/bulk_query_gen/timescaledb"
+	"github.com/naivewong/influxdb-comparisons/bulk_data_gen/common"
+	bulkQueryGen "github.com/naivewong/influxdb-comparisons/bulk_query_gen"
+	"github.com/naivewong/influxdb-comparisons/bulk_query_gen/cassandra"
+	"github.com/naivewong/influxdb-comparisons/bulk_query_gen/elasticsearch"
+	"github.com/naivewong/influxdb-comparisons/bulk_query_gen/graphite"
+	"github.com/naivewong/influxdb-comparisons/bulk_query_gen/influxdb"
+	"github.com/naivewong/influxdb-comparisons/bulk_query_gen/mongodb"
+	"github.com/naivewong/influxdb-comparisons/bulk_query_gen/opentsdb"
+	"github.com/naivewong/influxdb-comparisons/bulk_query_gen/splunk"
+	"github.com/naivewong/influxdb-comparisons/bulk_query_gen/timescaledb"
 	"log"
 	"math/rand"
 	"os"
@@ -49,6 +49,7 @@ const (
 	DashboardRedisMemoryUtilization = "redis-memory-utilization"
 	DashboardSystemLoad             = "system-load"
 	DashboardThroughput             = "throughput"
+	PrometheusType1                 = "prometheus-type1"
 )
 
 // query generator choices {use-case, query-type, format}
@@ -134,6 +135,12 @@ var useCaseMatrix = map[string]map[string]map[string]bulkQueryGen.QueryGenerator
 		DashboardSystemLoad:             {"influx-http": influxdb.NewInfluxQLDashboardSystemLoad},
 		DashboardThroughput:             {"influx-http": influxdb.NewInfluxQLDashboardThroughput},
 	},
+	common.UseCasePrometheus: {
+		PrometheusType1: {
+			"origin":    influxdb.NewFluxPrometheusType1,
+			"same-host": influxdb.NewFluxPrometheusType1,
+		},
+	},
 }
 
 // Program option vars:
@@ -162,6 +169,9 @@ var (
 
 	interleavedGenerationGroupID uint
 	interleavedGenerationGroups  uint
+
+	org   string
+	mode  string
 )
 
 // Parse args:
@@ -182,10 +192,10 @@ func init() {
 		}
 	}
 
-	flag.StringVar(&format, "format", "influx-http", "Format to emit. (Choices are in the use case matrix.)")
+	flag.StringVar(&format, "format", "origin", "Format to emit. (Choices are in the use case matrix.)")
 	flag.StringVar(&documentFormat, "document-format", "", "Document format specification. (for mongo format 'simpleArrays'; leave empty for previous behaviour)")
-	flag.StringVar(&useCase, "use-case", common.UseCaseChoices[0], "Use case to model. (Choices are in the use case matrix.)")
-	flag.StringVar(&queryType, "query-type", "", "Query type. (Choices are in the use case matrix.)")
+	flag.StringVar(&useCase, "use-case", common.UseCaseChoices[3], "Use case to model. (Choices are in the use case matrix.)")
+	flag.StringVar(&queryType, "query-type", PrometheusType1, "Query type. (Choices are in the use case matrix.)")
 
 	flag.IntVar(&scaleVar, "scale-var", 1, "Scaling variable (must be the equal to the scale-var used for data generation).")
 	flag.IntVar(&queryCount, "queries", 1000, "Number of queries to generate.")
@@ -202,6 +212,9 @@ func init() {
 
 	flag.UintVar(&interleavedGenerationGroupID, "interleaved-generation-group-id", 0, "Group (0-indexed) to perform round-robin serialization within. Use this to scale up data generation to multiple processes.")
 	flag.UintVar(&interleavedGenerationGroups, "interleaved-generation-groups", 1, "The number of round-robin serialization groups. Use this to scale up data generation to multiple processes.")
+
+	flag.StringVar(&org, "org", "cuhk", "organization")
+	flag.StringVar(&mode, "mode", "origin", "PrometheusType1 mode")
 
 	flag.Parse()
 
@@ -303,6 +316,8 @@ func main() {
 
 	dbConfig := bulkQueryGen.DatabaseConfig{
 		bulkQueryGen.DatabaseName: dbName,
+		"org":                     org,
+		"mode":                    mode,
 	}
 
 	// Make the query generator:
@@ -325,7 +340,8 @@ func main() {
 	enc := gob.NewEncoder(out)
 	for i := 0; i < queryCount; i++ {
 		q := generator.Dispatch(i)
-
+		// qi := q.(*bulkQueryGen.HTTPQuery)
+		// fmt.Fprintf(os.Stderr, qi.String())
 		if currentInterleavedGroup == interleavedGenerationGroupID {
 			err := enc.Encode(q)
 			if err != nil {

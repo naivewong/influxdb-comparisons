@@ -11,13 +11,13 @@ import (
 	"encoding/gob"
 	"flag"
 	"fmt"
-	"github.com/influxdata/influxdb-comparisons/bulk_query"
+	"github.com/naivewong/influxdb-comparisons/bulk_query"
 	"io"
 	"log"
 	"strings"
 	"sync"
 
-	"github.com/influxdata/influxdb-comparisons/util/report"
+	"github.com/naivewong/influxdb-comparisons/util/report"
 )
 
 type ElasticQueryBenchmarker struct {

@@ -9,9 +9,9 @@ import (
 	"encoding/gob"
 	"flag"
 	"fmt"
-	"github.com/influxdata/influxdb-comparisons/bulk_query"
-	"github.com/influxdata/influxdb-comparisons/bulk_query/http"
-	"github.com/influxdata/influxdb-comparisons/util/report"
+	"github.com/naivewong/influxdb-comparisons/bulk_query"
+	"github.com/naivewong/influxdb-comparisons/bulk_query/http"
+	"github.com/naivewong/influxdb-comparisons/util/report"
 	"io"
 	"log"
 	"math/rand"
@@ -34,6 +34,8 @@ type InfluxQueryBenchmarker struct {
 
 	queryPool sync.Pool
 	queryChan chan []*http.Query
+
+	authorization: string
 }
 
 var querier = &InfluxQueryBenchmarker{}
@@ -58,6 +60,8 @@ func (b *InfluxQueryBenchmarker) Init() {
 	flag.DurationVar(&b.writeTimeout, "read-timeout", time.Second*300, "TCP read timeout.")
 	flag.StringVar(&b.httpClientType, "http-client-type", "fast", "HTTP client type {fast, default}")
 	flag.IntVar(&b.clientIndex, "client-index", 0, "Index of a client host running this tool. Used to distribute load")
+
+	flag.StringVar(&b.authorization, "token", "YWVdTSHxIJ0XfgyprNmEe7RhhKP0YI1KQa4y4Zz5iZWkg4gkKJigGpafeQXoS_9Z52D9H-T0rruPp8O9Es2TtA==", "Authorization token")
 }
 
 func (b *InfluxQueryBenchmarker) Validate() {

@@ -36,8 +36,8 @@ The intended usage of the DevOps data generator is to create distinct datasets t
 
 Each simulated host is initialized with a RAM size and a set of stateful probability distributions (Gaussian random walks with clamping), corresponding to nine statistics as reported by Telegraf. Here are the Telegraf collectors for CPU and memory:
 
-https://github.com/influxdata/telegraf/blob/master/plugins/inputs/system/cpu.go
-https://github.com/influxdata/telegraf/blob/master/plugins/inputs/system/memory.go
+https://github.com/naivewong/telegraf/blob/master/plugins/inputs/system/cpu.go
+https://github.com/naivewong/telegraf/blob/master/plugins/inputs/system/memory.go
 
 For example, here is a graph of the simulated CPU usage through time for 10 hosts, when using the data generator:
 
@@ -342,13 +342,13 @@ Executing the benchmarks requires the Go compiler and tools to be installed on y
 Running benchmarks requires installing the data and query generators along with loaders and benchmarkers for the platforms you wish to test. For example, to install and run load tests for InfluxDB, execute:
 
 ```
-go get github.com/influxdata/influxdb-comparisons/cmd/bulk_data_gen github.com/influxdata/influxdb-comparisons/cmd/bulk_load_influx
+go get github.com/naivewong/influxdb-comparisons/cmd/bulk_data_gen github.com/naivewong/influxdb-comparisons/cmd/bulk_load_influx
 ```
 
 This will download and install the latest code from GitHub (including dependencies). Check the ``cmd`` directory for additional database implementations to download and install. For query benchmarking, install the query generator and benchmark executor for your platform. E.g. for InfluxDB:
 
 ```
-go get github.com/influxdata/influxdb-comparisons/cmd/bulk_query_gen github.com/influxdata/influxdb-comparisons/cmd/query_benchmarker_influxdb
+go get github.com/naivewong/influxdb-comparisons/cmd/bulk_query_gen github.com/naivewong/influxdb-comparisons/cmd/query_benchmarker_influxdb
 ```
 
 ### Help

@@ -19,7 +19,7 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/influxdata/influxdb-comparisons/util/report"
+	"github.com/naivewong/influxdb-comparisons/util/report"
 )
 
 // TODO: distinguish per use case
@@ -117,7 +117,7 @@ func (r *LoadRunner) Init(defaultBatchSize int) {
 	flag.StringVar(&r.cpuProfileFile, "cpu-profile", "", "Write cpu profile to `file`")
 	flag.BoolVar(&r.DoLoad, "do-load", true, "Whether to write data. Set this flag to false to check input read speed.")
 	flag.BoolVar(&r.DoDBCreate, "do-db-create", true, "Whether to create the database.")
-	flag.BoolVar(&r.DoAbortOnExist, "do-abort-on-exist", true, "Whether to abort if the destination database already exists.")
+	flag.BoolVar(&r.DoAbortOnExist, "do-abort-on-exist", false, "Whether to abort if the destination database already exists.")
 	flag.BoolVar(&r.memprofile, "memprofile", false, "Whether to write a memprofile (file automatically determined).")
 	flag.BoolVar(&r.telemetryStderr, "telemetry-stderr", false, "Whether to write telemetry also to stderr.")
 	flag.Uint64Var(&r.telemetryBatchSize, "telemetry-batch-size", 1, "Telemetry batch size (lines).")
