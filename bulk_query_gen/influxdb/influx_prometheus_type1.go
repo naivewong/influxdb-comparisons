@@ -24,7 +24,7 @@ func NewFluxPrometheusType1(dbConfig bulkQuerygen.DatabaseConfig, interval bulkQ
 	g := &InfluxPrometheusType1{
 		db:          dbConfig[bulkQuerygen.DatabaseName],
 		interval:    interval,
-		currentTime: interval.Start,
+		currentTime: interval.Start.Add(interval.End.Sub(interval.Start)/2),
 		mode:        dbConfig["mode"],
 		org:         dbConfig["org"],
 	}

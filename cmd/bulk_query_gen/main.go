@@ -170,8 +170,9 @@ var (
 	interleavedGenerationGroupID uint
 	interleavedGenerationGroups  uint
 
-	org   string
-	mode  string
+	org  string
+	mode string
+	fill bool
 )
 
 // Parse args:
@@ -215,6 +216,7 @@ func init() {
 
 	flag.StringVar(&org, "org", "cuhk", "organization")
 	flag.StringVar(&mode, "mode", "origin", "PrometheusType1 mode")
+	flag.BoolVar(&fill, "fill", false, "")
 
 	flag.Parse()
 
@@ -302,6 +304,10 @@ func init() {
 		}
 		mongodb.DocumentFormat = documentFormat
 		log.Printf("Using '%s' mongo serialization", mongodb.DocumentFormat)
+	}
+
+	if fill {
+		queryCount = int(duration.Nanoseconds() / time.Minute.Nanoseconds() / int64(10))
 	}
 
 	// the default seed is the current timestamp:

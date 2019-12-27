@@ -53,8 +53,10 @@ func (w *FastHTTPClient) Do(q *Query, opts *HTTPClientDoOptions) (lag float64, e
 	req := fasthttp.AcquireRequest()
 	defer fasthttp.ReleaseRequest(req)
 
+	req.Header.SetContentTypeBytes([]byte("application/vnd.flux"))
 	req.Header.SetMethodBytes(q.Method)
 	req.Header.SetRequestURIBytes(uri)
+	req.Header.Add("Accept", "application/csv")
 	if opts.Authorization != "" {
 		req.Header.Add("Authorization", opts.Authorization)
 	}

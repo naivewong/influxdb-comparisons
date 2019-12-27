@@ -24,3 +24,15 @@
 
 # load
 cat random5s.gz | gunzip | ./main --batch-size=5000 --workers=8
+
+# generate query (origin)
+./main --debug=0 --seed=321 --fill=true | gzip > query_type1_origin.gz
+
+# generate query (same-host)
+./main --debug=0 --seed=321 --fill=true --mode="same-host" | gzip > query_type1_same_host.gz
+
+# query
+cat query_type1_origin.gz | gunzip | ../query_benchmarker_influxdb/main --workers=8
+
+# query
+cat query_type1_same_host.gz | gunzip | ../query_benchmarker_influxdb/main --workers=8

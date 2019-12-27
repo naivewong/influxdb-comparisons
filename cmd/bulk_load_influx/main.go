@@ -168,7 +168,10 @@ func (l *InfluxBulkLoad) CreateDb() {
 
 	for i, name := range existingDatabases {
 		if name == bulk_load.Runner.DbName {
-			deleteDB(l.daemonUrls[0], ids[i], l.token)
+			err = deleteDB(l.daemonUrls[0], ids[i], l.token)
+			if err != nil {
+				log.Fatalf("Error delete:%s err:%s\n", name, err.Error())
+			}
 		}
 	}
 
@@ -547,7 +550,7 @@ func deleteDB(daemonUrl, bid, token string) error {
 	defer resp.Body.Close()
 	// does the body need to be read into the void?
 
-	if resp.StatusCode != http.StatusOK && resp.StatusCode != http.StatusNonAuthoritativeInfo {
+	if resp.StatusCode != http.StatusOK && resp.StatusCode != http.StatusNoContent {
 		return fmt.Errorf("createDb returned status code: %v", resp.StatusCode)
 	}
 	fmt.Println("Delete bucket", bid)

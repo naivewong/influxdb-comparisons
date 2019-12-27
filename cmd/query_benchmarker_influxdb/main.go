@@ -35,7 +35,7 @@ type InfluxQueryBenchmarker struct {
 	queryPool sync.Pool
 	queryChan chan []*http.Query
 
-	authorization: string
+	authorization string
 }
 
 var querier = &InfluxQueryBenchmarker{}
@@ -54,14 +54,14 @@ func init() {
 }
 
 func (b *InfluxQueryBenchmarker) Init() {
-	flag.StringVar(&b.csvDaemonUrls, "urls", "http://localhost:8086", "Daemon URLs, comma-separated. Will be used in a round-robin fashion.")
+	flag.StringVar(&b.csvDaemonUrls, "urls", "http://localhost:9999/api/v2", "Daemon URLs, comma-separated. Will be used in a round-robin fashion.")
 	flag.DurationVar(&b.dialTimeout, "dial-timeout", time.Second*15, "TCP dial timeout.")
 	flag.DurationVar(&b.readTimeout, "write-timeout", time.Second*300, "TCP write timeout.")
 	flag.DurationVar(&b.writeTimeout, "read-timeout", time.Second*300, "TCP read timeout.")
 	flag.StringVar(&b.httpClientType, "http-client-type", "fast", "HTTP client type {fast, default}")
 	flag.IntVar(&b.clientIndex, "client-index", 0, "Index of a client host running this tool. Used to distribute load")
 
-	flag.StringVar(&b.authorization, "token", "YWVdTSHxIJ0XfgyprNmEe7RhhKP0YI1KQa4y4Zz5iZWkg4gkKJigGpafeQXoS_9Z52D9H-T0rruPp8O9Es2TtA==", "Authorization token")
+	flag.StringVar(&b.authorization, "token", "Token YWVdTSHxIJ0XfgyprNmEe7RhhKP0YI1KQa4y4Zz5iZWkg4gkKJigGpafeQXoS_9Z52D9H-T0rruPp8O9Es2TtA==", "Authorization token")
 }
 
 func (b *InfluxQueryBenchmarker) Validate() {
@@ -184,6 +184,7 @@ loop:
 // target server, while tracking latency.
 func (b *InfluxQueryBenchmarker) processQueries(w http.HTTPClient, workersGroup *sync.WaitGroup, statPool sync.Pool, statChan chan *bulk_query.Stat) error {
 	opts := &http.HTTPClientDoOptions{
+		Authorization:        b.authorization,
 		Debug:                bulk_query.Benchmarker.Debug(),
 		PrettyPrintResponses: bulk_query.Benchmarker.PrettyPrintResponses(),
 	}
